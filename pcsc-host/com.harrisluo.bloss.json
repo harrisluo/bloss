@@ -1,0 +1,7 @@
+{
+    "name": "com.harrisluo.bloss",
+    "description": "Native PCSC middleware for OpenPGP smart card signing",
+    "path": "/Users/harrisluo/Documents/bloss/pcsc-host/target/debug/pcsc-host",
+    "type": "stdio",
+    "allowed_origins": ["chrome-extension://dfcecdhfnbdaoghpgogbomconphmaejm/"]
+}
