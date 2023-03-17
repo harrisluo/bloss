@@ -1,19 +1,20 @@
-use std::{io::{BufRead, Read, Write}, num::TryFromIntError};
+use std::{io::{Read, Write}, num::TryFromIntError};
 
 use byteorder::{ReadBytesExt, NativeEndian, WriteBytesExt};
-use pcsc_host::card;
+use pcsc_host::card::{OpenpgpCardInfo};
 use serde::{Serialize, Deserialize};
-use serde_json::Value;
-use solana_sdk::{pubkey::Pubkey, signature::Signature};
 use thiserror::Error;
 
 use {
+    openpgp_card::{
+        Error as OpenpgpCardError,
+        SmartcardError as SmartcardError,
+        StatusBytes as CardStatusBytes,
+    },
     openpgp_card_pcsc::PcscBackend,
     pcsc_host::card::{
-        Locator,
         OpenpgpCard,
     },
-    solana_sdk::signer::Signer,
     std::{
         error::Error,
         io,
@@ -28,85 +29,111 @@ struct PcscHostRequest {
 #[derive(Serialize, Deserialize, Debug)]
 enum PcscHostCommand {
     ListCards,
-    SignData {
+    SignMessage {
         aid: String,
-        digest: Vec<u8>,
+        message: Vec<u8>,
+        pin: Vec<u8>,
     },
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-struct PgpSignerInfo {
-    pub aid: String,
-    pub pk: Pubkey,
-    pub name: String,
+enum PcscHostResponse {
+    Ok(ResponseData),
+    Error(PcscHostError),
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-enum PcscHostResponse {
-    ListCards(Vec<PgpSignerInfo>),
-    SignData(Signature),
+enum ResponseData {
+    ListCards(Vec<OpenpgpCardInfo>),
+    SignMessage(Vec<u8>),
+    AwaitTouch,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Error, PartialEq, Eq)]
+enum PcscHostError {
+    #[error("internal OpenPGP error: {0}")]
+    InternalError(String),
+    #[error("error parsing AID: {0}")]
+    AIDParseError(String),
+    #[error("could not find card with AID {0}")]
+    CardNotFound(String),
+    #[error("invalid PIN")]
+    InvalidPin,
+    #[error("touch confirmation timed out")]
+    TouchConfirmationTimeout,
 }
 
 impl PcscHostRequest {
-    fn handle(&self) -> Result<PcscHostResponse, Box<dyn Error>> {
-        let response = match &self.command {
+    fn handle(&self) -> PcscHostResponse {
+        match &self.command {
             PcscHostCommand::ListCards => {
                 eprintln!("LIST CARDS");
-                PcscHostResponse::ListCards(list_cards()?)
+                match list_cards() {
+                    Ok(cards) => PcscHostResponse::Ok(ResponseData::ListCards(cards)),
+                    Err(e) => PcscHostResponse::Error(e),
+                }
             },
-            PcscHostCommand::SignData { aid, digest } => {
+            PcscHostCommand::SignMessage { aid, message, pin } => {
                 eprintln!("SIGN DATA");
-                eprintln!("{:?}", &self.command);
-                //PcscHostResponse::SignData(Signature::new(&[7u8; 64]))
-
-                let uri_string = format!("pgpcard://{}", aid);
-                let uri = uriparse::URIReference::try_from(uri_string.as_str())?;
-                let card = OpenpgpCard::try_from(
-                    &Locator::try_from(&uri)?
-                )?;
-                let signature = card.sign_message(&digest.as_slice());
-                PcscHostResponse::SignData(signature)
+                match sign_message(aid, message, pin) {
+                    Ok(signature) => PcscHostResponse::Ok(ResponseData::SignMessage(signature)),
+                    Err(e) => PcscHostResponse::Error(e),
+                }
             },
-        };
-        eprintln!("DONE HANDLING");
-        Ok(response)
+        }
     }
 }
 
-fn list_cards() -> Result<Vec<PgpSignerInfo>, Box<dyn Error>> {
+fn write_touch_notification() {
+    eprintln!("Awaiting touch confirmation...");
+    let response = PcscHostResponse::Ok(ResponseData::AwaitTouch);
+    write_response(&response).unwrap();
+}
+
+fn list_cards() -> Result<Vec<OpenpgpCardInfo>, PcscHostError> {
     let card_results = PcscBackend::cards(None);
     let backends = match card_results {
         Ok(b) => b,
-        Err(openpgp_card::Error::Smartcard(openpgp_card::SmartcardError::NoReaderFoundError)) => Vec::new(),
-        _ => card_results?,
+        Err(OpenpgpCardError::Smartcard(SmartcardError::NoReaderFoundError)) => Vec::new(),
+        Err(e) => return Err(PcscHostError::InternalError(e.to_string())),
     };
-    let mut cards = Vec::<PgpSignerInfo>::new();
+    let mut cards = Vec::<OpenpgpCardInfo>::new();
     for backend in backends {
         let card = OpenpgpCard::from(backend);
-        let (name, aid ) = card.get_name_and_aid()?;
-        cards.push(PgpSignerInfo { name, aid, pk: card.pubkey() });
+        cards.push(card.get_info().map_err(|e| PcscHostError::InternalError(e.to_string()))?);
     }
     Ok(cards)
 }
 
-// fn demo() -> Result<(), Box<dyn Error>> {
-//     let big_yubi_uri = uriparse::URIReference::try_from("pgpcard://D2760001240103040006223637060000")?;
-//     let big_yubi = OpenpgpCard::try_from(
-//         &Locator::try_from(&big_yubi_uri)?
-//     )?;
-//     println!("Pubkey: {}", big_yubi.pubkey());
-
-//     Ok(())
-// }
-
-fn read_header() -> Result<u32, io::Error> {
-    let header = io::stdin().read_u32::<NativeEndian>()?;
-    eprintln!("READ HEADER");
-    Ok(header)
+fn sign_message(aid: &String, message: &Vec<u8>, pin: &Vec<u8>) -> Result<Vec<u8>, PcscHostError> {
+    let card = OpenpgpCard::try_from(aid).map_err(
+        |e| match e {
+            OpenpgpCardError::ParseError(desc) => PcscHostError::AIDParseError(desc),
+            OpenpgpCardError::Smartcard(SmartcardError::CardNotFound(_)) =>
+                PcscHostError::CardNotFound(aid.to_string()),
+            _ => PcscHostError::InternalError(e.to_string()),
+        }
+    )?;
+    let signature = card.sign_message(
+        &message.as_slice(),
+        pin.as_slice(),
+        write_touch_notification
+    ).map_err(
+        |e| match e {
+            OpenpgpCardError::CardStatus(CardStatusBytes::IncorrectParametersCommandDataField) => {
+                PcscHostError::InvalidPin
+            },
+            OpenpgpCardError::CardStatus(CardStatusBytes::SecurityRelatedIssues) => {
+                PcscHostError::TouchConfirmationTimeout
+            },
+            _ => PcscHostError::InternalError(e.to_string()),
+        }
+    )?;
+    Ok(signature)
 }
 
 #[derive(Debug, Error)]
-pub enum ReadRequestError {
+enum ReadRequestError {
     #[error("end of input reached")]
     EndOfInput,
     #[error(transparent)]
@@ -115,6 +142,12 @@ pub enum ReadRequestError {
     TryFromIntError(#[from] TryFromIntError),
     #[error(transparent)]
     SerdeError(#[from] serde_json::Error),
+}
+
+fn read_header() -> Result<u32, io::Error> {
+    let header = io::stdin().read_u32::<NativeEndian>()?;
+    eprintln!("READ HEADER");
+    Ok(header)
 }
 
 fn read_request() -> Result<PcscHostRequest, ReadRequestError> {
@@ -161,7 +194,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             Err(e) => return Err(Box::new(e))
         };
         eprintln!("START HANDLING");
-        let response = request.handle()?;
+        let response = request.handle();
+        eprintln!("DONE HANDLING");
         write_response(&response)?;
         eprintln!("END CMD");
     }
