@@ -1,26 +1,20 @@
 use {
     openpgp_card::{
         algorithm::{Algo, Curve},
-        card_do::{ApplicationIdentifier, UIF},
+        card_do::{
+            ApplicationIdentifier,
+            KeyStatus,
+        },
         crypto_data::{EccType, PublicKeyMaterial, Hash},
+        Error as OpenpgpCardError,
+        KeyType,
         OpenPgp,
-        SmartcardError,
-        OpenPgpTransaction
+        StatusBytes,
     },
     openpgp_card_pcsc::PcscBackend,
-    pinentry::PassphraseInput,
-    secrecy::ExposeSecret,
     serde::{Serialize, Deserialize},
-    solana_sdk::{
-        pubkey::Pubkey,
-        signature::{Signature, Signer, SignerError},
-    },
-    std::{
-        cell::RefCell,
-        error,
-    },
+    std::cell::RefCell,
     thiserror::Error,
-    uriparse::{URIReference, URIReferenceError},
 };
 
 pub struct OpenpgpCard {
@@ -35,20 +29,24 @@ impl From<PcscBackend> for OpenpgpCard {
 }
 
 impl TryFrom<&String> for OpenpgpCard {
-    type Error = openpgp_card::Error;
+    type Error = CardErrorWrapper;
 
     fn try_from(ident: &String) -> Result<Self, Self::Error> {
         if ident.len() != 32 {
-            return Err(openpgp_card::Error::ParseError("OpenPGP AID must be 32-digit hex string".to_string()));
+            return Err(Self::Error::AIDParseError("OpenPGP AID must be 32-digit hex string".to_string()));
         }
         let mut ident_bytes = Vec::<u8>::new();
         for i in (0..ident.len()).step_by(2) {
             ident_bytes.push(u8::from_str_radix(&ident[i..i + 2], 16).map_err(
-                |_| openpgp_card::Error::ParseError("non-hex character found in identifier".to_string())
+                |_| Self::Error::AIDParseError("non-hex character found in identifier".to_string())
             )?);
         }
-        let aid = ApplicationIdentifier::try_from(ident_bytes.as_slice())?;
-        let backend = PcscBackend::open_by_ident(aid.ident().as_str(), None)?;
+        let aid = ApplicationIdentifier::try_from(ident_bytes.as_slice()).map_err(
+            |e| Self::Error::AIDParseError(e.to_string())
+        )?;
+        let backend = PcscBackend::open_by_ident(aid.ident().as_str(), None).map_err(
+            |_| Self::Error::CardNotFound(ident.to_string())
+        )?;
         Ok(backend.into())
     }
 }
@@ -64,30 +62,67 @@ pub struct OpenpgpCardInfo {
 }
 
 impl OpenpgpCard {
-    pub fn get_info(&self) -> Result<OpenpgpCardInfo, openpgp_card::Error> {
+    pub fn get_info(&self) -> Result<OpenpgpCardInfo, CardErrorWrapper> {
         let mut pgp_mut = self.pgp.borrow_mut();
         let opt = &mut pgp_mut.transaction()?;
         let ard = opt.application_related_data()?;
         let aid = ard.application_id()?;
 
-        // TODO: Handle case where there is no signing key.
-        let pk_material = opt.public_key(openpgp_card::KeyType::Signing)?;
-        let pubkey = get_pubkey_from_pk_material(pk_material)?;
+        let mut signing_key_exists = false;
+        if let Some(key_info) = ard.key_information()? {
+            match key_info.sig_status() {
+                KeyStatus::Generated | KeyStatus::Imported => signing_key_exists = true,
+                _ => (),
+            };
+        } else {
+            return Err(CardErrorWrapper::InternalError("could not get key information".to_string()));
+        }
+
+        let mut signing_algo: String = "null".to_string();
+        let mut pubkey = Vec::<u8>::new();
+        if signing_key_exists {
+            signing_algo = ard.algorithm_attributes(KeyType::Signing)?.to_string();
+            let pk_material = opt.public_key(KeyType::Signing)?;
+            pubkey = get_pubkey_from_pk_material(pk_material)?;
+        }
 
         Ok(OpenpgpCardInfo {
             manufacturer: aid.manufacturer_name().to_string(),
             serial_number: format!("{:08x}", aid.serial()),
             aid: aid.to_string().replace(" ", ""),
-            signing_algo: "ed25519".to_string(),
-            pubkey_bytes: pubkey.to_bytes().to_vec(),
+            signing_algo: signing_algo,
+            pubkey_bytes: pubkey,
         })
     }
 
-    pub fn sign_message(&self, message: &[u8], pin: &[u8], touch_confirm_callback: fn()) -> Result<Vec<u8>, openpgp_card::Error> {
+    pub fn sign_message(
+        &self,
+        message: &[u8],
+        pin: &[u8],
+        touch_confirm_callback: fn()
+    ) -> Result<Vec<u8>, CardErrorWrapper> {
         let mut pgp_mut = self.pgp.borrow_mut();
         let opt = &mut pgp_mut.transaction()?;
 
-        opt.verify_pw1_sign(pin)?;
+        // Check if signing key exists
+        let ard = opt.application_related_data()?;
+        if let Some(key_info) = ard.key_information()? {
+            match key_info.sig_status() {
+                KeyStatus::NotPresent | KeyStatus::Unknown(_) => return Err(CardErrorWrapper::SigningKeyNotFound),
+                _ => (),
+            };
+        } else {
+            return Err(CardErrorWrapper::InternalError("could not get key information".to_string()));
+        }
+
+        opt.verify_pw1_sign(pin).map_err(
+            |e| match e {
+                OpenpgpCardError::CardStatus(StatusBytes::IncorrectParametersCommandDataField) => {
+                    CardErrorWrapper::InvalidPin
+                },
+                _ => CardErrorWrapper::from(e),
+            }
+        )?;
 
         // Await user touch confirmation if and only if
         //   * Card supports touch confirmation, and
@@ -101,28 +136,57 @@ impl OpenpgpCard {
 
         // Delegate message signing to card
         let hash = Hash::EdDSA(message);
-        let sig = opt.signature_for_hash(hash)?;
+        let sig = opt.signature_for_hash(hash).map_err(
+            |e| match e {
+                OpenpgpCardError::CardStatus(StatusBytes::SecurityRelatedIssues) => {
+                    CardErrorWrapper::TouchConfirmationTimeout
+                },
+                _ => CardErrorWrapper::from(e),
+            }
+        )?;
 
         Ok(sig)
     }
 }
 
-fn get_pubkey_from_pk_material(pk_material: PublicKeyMaterial) -> Result<Pubkey, openpgp_card::Error> {
+#[derive(Serialize, Deserialize, Clone, Debug, Error, PartialEq, Eq)]
+pub enum CardErrorWrapper {
+    #[error("error parsing AID: {0}")]
+    AIDParseError(String),
+    #[error("could not find card with AID {0}")]
+    CardNotFound(String),
+    #[error("internal OpenPGP error: {0}")]
+    InternalError(String),
+    #[error("no signing key found on card")]
+    SigningKeyNotFound,
+    #[error("invalid PIN")]
+    InvalidPin,
+    #[error("touch confirmation timed out")]
+    TouchConfirmationTimeout,
+}
+
+impl From<OpenpgpCardError> for CardErrorWrapper {
+    fn from(e: OpenpgpCardError) -> Self {
+        CardErrorWrapper::InternalError(e.to_string())
+    }
+}
+
+fn get_pubkey_from_pk_material(pk_material: PublicKeyMaterial) -> Result<Vec<u8>, OpenpgpCardError> {
     let pk_bytes: [u8; 32] = match pk_material {
         PublicKeyMaterial::E(pk) => match pk.algo() {
             Algo::Ecc(ecc_attrs) => {
                 if ecc_attrs.ecc_type() != EccType::EdDSA || ecc_attrs.curve() != Curve::Ed25519 {
-                    return Err(openpgp_card::Error::UnsupportedAlgo(
+                    return Err(OpenpgpCardError::UnsupportedAlgo(
                         format!("expected Ed25519 key, got {:?}", ecc_attrs.curve())
                     ));
                 }
                 pk.data().try_into().map_err(
-                    |e| openpgp_card::Error::ParseError(format!("key on card is malformed: {}", e))
+                    |e| OpenpgpCardError::ParseError(format!("key on card is malformed: {}", e))
                 )?
             },
-            _ => return Err(openpgp_card::Error::UnsupportedAlgo("expected ECC key, got RSA".to_string())),
+            _ => return Err(OpenpgpCardError::UnsupportedAlgo("expected ECC key, got RSA".to_string())),
         }
-        _ => return Err(openpgp_card::Error::UnsupportedAlgo("expected ECC key, got RSA".to_string())),
+        _ => return Err(OpenpgpCardError::UnsupportedAlgo("expected ECC key, got RSA".to_string())),
     };
-    Ok(Pubkey::from(pk_bytes))
+    Ok(pk_bytes.to_vec())
 }

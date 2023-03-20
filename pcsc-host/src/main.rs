@@ -1,24 +1,18 @@
-use std::{io::{Read, Write}, num::TryFromIntError};
-
-use byteorder::{ReadBytesExt, NativeEndian, WriteBytesExt};
-use pcsc_host::card::{OpenpgpCardInfo};
-use serde::{Serialize, Deserialize};
-use thiserror::Error;
-
 use {
+    byteorder::{ReadBytesExt, NativeEndian, WriteBytesExt},
     openpgp_card::{
         Error as OpenpgpCardError,
         SmartcardError as SmartcardError,
-        StatusBytes as CardStatusBytes,
     },
     openpgp_card_pcsc::PcscBackend,
-    pcsc_host::card::{
-        OpenpgpCard,
-    },
+    pcsc_host::card::{CardErrorWrapper, OpenpgpCard, OpenpgpCardInfo},
+    serde::{Serialize, Deserialize},
     std::{
         error::Error,
-        io,
+        io::{self, Read, Write},
+        num::TryFromIntError,
     },
+    thiserror::Error,
 };
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -39,7 +33,7 @@ enum PcscHostCommand {
 #[derive(Serialize, Deserialize, Debug)]
 enum PcscHostResponse {
     Ok(ResponseData),
-    Error(PcscHostError),
+    Error(CardErrorWrapper),
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -49,35 +43,33 @@ enum ResponseData {
     AwaitTouch,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, Error, PartialEq, Eq)]
-enum PcscHostError {
-    #[error("internal OpenPGP error: {0}")]
-    InternalError(String),
-    #[error("error parsing AID: {0}")]
-    AIDParseError(String),
-    #[error("could not find card with AID {0}")]
-    CardNotFound(String),
-    #[error("invalid PIN")]
-    InvalidPin,
-    #[error("touch confirmation timed out")]
-    TouchConfirmationTimeout,
-}
-
 impl PcscHostRequest {
     fn handle(&self) -> PcscHostResponse {
         match &self.command {
             PcscHostCommand::ListCards => {
-                eprintln!("LIST CARDS");
+                eprint!("LIST CARDS...");
                 match list_cards() {
-                    Ok(cards) => PcscHostResponse::Ok(ResponseData::ListCards(cards)),
-                    Err(e) => PcscHostResponse::Error(e),
+                    Ok(cards) => {
+                        eprintln!("Ok");
+                        PcscHostResponse::Ok(ResponseData::ListCards(cards))
+                    },
+                    Err(e) => {
+                        eprintln!("Error: {e}");
+                        PcscHostResponse::Error(e)
+                    },
                 }
             },
             PcscHostCommand::SignMessage { aid, message, pin } => {
-                eprintln!("SIGN DATA");
+                eprint!("SIGN DATA...");
                 match sign_message(aid, message, pin) {
-                    Ok(signature) => PcscHostResponse::Ok(ResponseData::SignMessage(signature)),
-                    Err(e) => PcscHostResponse::Error(e),
+                    Ok(signature) => {
+                        eprintln!("Ok");
+                        PcscHostResponse::Ok(ResponseData::SignMessage(signature))
+                    },
+                    Err(e) => {
+                        eprintln!("Error: {e}");
+                        PcscHostResponse::Error(e)
+                    },
                 }
             },
         }
@@ -90,44 +82,27 @@ fn write_touch_notification() {
     write_response(&response).unwrap();
 }
 
-fn list_cards() -> Result<Vec<OpenpgpCardInfo>, PcscHostError> {
+fn list_cards() -> Result<Vec<OpenpgpCardInfo>, CardErrorWrapper> {
     let card_results = PcscBackend::cards(None);
     let backends = match card_results {
         Ok(b) => b,
         Err(OpenpgpCardError::Smartcard(SmartcardError::NoReaderFoundError)) => Vec::new(),
-        Err(e) => return Err(PcscHostError::InternalError(e.to_string())),
+        Err(e) => return Err(CardErrorWrapper::InternalError(e.to_string())),
     };
     let mut cards = Vec::<OpenpgpCardInfo>::new();
     for backend in backends {
         let card = OpenpgpCard::from(backend);
-        cards.push(card.get_info().map_err(|e| PcscHostError::InternalError(e.to_string()))?);
+        cards.push(card.get_info()?);
     }
     Ok(cards)
 }
 
-fn sign_message(aid: &String, message: &Vec<u8>, pin: &Vec<u8>) -> Result<Vec<u8>, PcscHostError> {
-    let card = OpenpgpCard::try_from(aid).map_err(
-        |e| match e {
-            OpenpgpCardError::ParseError(desc) => PcscHostError::AIDParseError(desc),
-            OpenpgpCardError::Smartcard(SmartcardError::CardNotFound(_)) =>
-                PcscHostError::CardNotFound(aid.to_string()),
-            _ => PcscHostError::InternalError(e.to_string()),
-        }
-    )?;
+fn sign_message(aid: &String, message: &Vec<u8>, pin: &Vec<u8>) -> Result<Vec<u8>, CardErrorWrapper> {
+    let card = OpenpgpCard::try_from(aid)?;
     let signature = card.sign_message(
         &message.as_slice(),
         pin.as_slice(),
         write_touch_notification
-    ).map_err(
-        |e| match e {
-            OpenpgpCardError::CardStatus(CardStatusBytes::IncorrectParametersCommandDataField) => {
-                PcscHostError::InvalidPin
-            },
-            OpenpgpCardError::CardStatus(CardStatusBytes::SecurityRelatedIssues) => {
-                PcscHostError::TouchConfirmationTimeout
-            },
-            _ => PcscHostError::InternalError(e.to_string()),
-        }
     )?;
     Ok(signature)
 }
@@ -156,7 +131,6 @@ fn read_request() -> Result<PcscHostRequest, ReadRequestError> {
     io::stdin().read_exact(&mut buf)?;
     let v: PcscHostRequest = serde_json::from_slice(buf.as_slice())?;
     eprintln!("READ REQUEST");
-    eprintln!("{:?}", v);
     Ok(v)
 }
 
@@ -181,9 +155,9 @@ fn write_response(resp: &PcscHostResponse) -> Result<(), Box<dyn Error>> {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    //println!("{}", serde_json::to_string(&PcscHostRequest{ command: PcscHostCommand::ListCards })?);
     eprintln!("START NATIVE HOST");
     loop {
+        eprintln!("----------------------------------------");
         eprintln!("BEGIN CMD");
         let request = match read_request() {
             Ok(req) => req,
