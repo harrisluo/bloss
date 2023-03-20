@@ -35,6 +35,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "bloss-native"
+version = "0.1.0"
+dependencies = [
+ "byteorder",
+ "openpgp-card",
+ "openpgp-card-pcsc",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -292,18 +304,6 @@ checksum = "37cab0be9d04e808a8d8059fa54befcd71dc8b168f9f0c04bdb7e59832abbab4"
 dependencies = [
  "bitflags",
  "pcsc-sys",
-]
-
-[[package]]
-name = "pcsc-host"
-version = "0.1.0"
-dependencies = [
- "byteorder",
- "openpgp-card",
- "openpgp-card-pcsc",
- "serde",
- "serde_json",
- "thiserror",
 ]
 
 [[package]]
