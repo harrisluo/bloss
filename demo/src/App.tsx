@@ -1,8 +1,5 @@
-import React from 'react';
 import { MemoryRouter as Router, Routes, Route } from 'react-router-dom';
-import { CardItem } from './components/CardItem';
 import { Header } from './components/Header';
-import logo from './logo.svg';
 import { CardList } from './pages/CardList';
 import { CardSign } from './pages/CardSign';
 
