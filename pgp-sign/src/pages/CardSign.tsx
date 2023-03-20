@@ -1,10 +1,9 @@
 import { useState } from "react";
-import { Link, useLocation, useParams } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 import bs58 from 'bs58';
-import { sha512 } from 'js-sha512';
 import { CardItem } from "../components/CardItem";
 import { signMessage } from "../util/pcscHost";
-import { PgpCardInfo } from "../util/schema";
+import { BlossError, PgpCardInfo } from "../util/schema";
 import { FingerPrintIcon } from "@heroicons/react/20/solid";
 
 export const CardSign = () => {
@@ -62,13 +61,13 @@ export const CardSign = () => {
                         setAwaitingTouch(false);
                         const sigBase58 = bs58.encode(sigBytes);
                         setSignature(sigBase58);
-                    }).catch((e) => {
+                    }).catch((e: BlossError) => {
                         setPin("");
                         setAwaitingTouch(false);
 
-                        if (e === "InvalidPin") {
+                        if (e.type === "InvalidPin") {
                             setPinInvalid(true);
-                        } else if (e === "TouchConfirmationTimeout") {
+                        } else if (e.type === "TouchConfirmationTimeout") {
                             alert("Touch confirmation timed out. Please try again.");
                         } else {
                             alert(JSON.stringify(e));

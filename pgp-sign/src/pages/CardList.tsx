@@ -1,4 +1,3 @@
-import { PublicKey } from "@solana/web3.js"
 import { useEffect, useState } from "react"
 import { CardItem } from "../components/CardItem";
 import { listCards } from "../util/pcscHost";
@@ -20,6 +19,11 @@ export const CardList = () => {
 
     return <div className="p-4 text-stone-100">
         <h1 className="text-3xl text-center font-semibold pb-4">Select Card</h1>
-        <div className="grid grid-rows-1 gap-y-3">{cardItems}</div>
+        { cards.length > 0
+          ?
+          <div className="grid grid-rows-1 gap-y-3">{cardItems}</div>
+          :
+          <h2 className="text-xl text-center pb-2 text-stone-300">No cards found.</h2>
+        }
     </div>
 };
