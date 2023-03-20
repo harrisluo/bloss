@@ -6,7 +6,7 @@ license = "MIT"
 authors = ["Harris Luo"]
 edition = "2021"
 repository = "https://github.com/harrisluo/bloss"
-keywords = ["openpgp", "smart card", "chrome", "native", "messaging", "crypto", "signature", "signing"]
+keywords = ["openpgp", "smartcard", "chrome", "native", "messaging", "crypto", "signature", "signing"]
 exclude = ["target", "testin"]
 
 [dependencies]
