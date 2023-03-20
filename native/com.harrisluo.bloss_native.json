@@ -3,5 +3,5 @@
     "description": "Native messaging host for OpenPGP smart card signing",
     "path": "/Users/harrisluo/Documents/bloss/native/target/debug/bloss-native",
     "type": "stdio",
-    "allowed_origins": ["chrome-extension://dfcecdhfnbdaoghpgogbomconphmaejm/"]
+    "allowed_origins": ["chrome-extension://ddikloddgonoenmefagjogennogjhbhb/"]
 }

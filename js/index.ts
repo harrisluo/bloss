@@ -7,7 +7,7 @@ export interface PgpCardInfo {
     serialNumber: string,
     aid: string,
     signingAlgo: SigningAlgorithm,
-    pubkeyBytes: Array<number>,
+    pubkeyBytes: Uint8Array,
 }
 
 export interface BlossError {
@@ -24,7 +24,7 @@ export const listCards = async (): Promise<PgpCardInfo[]> => {
             (response) => {
                 console.log(response);
                 if (response.Ok) {
-                    const cards = (response.Ok as ListCardsData).ListCards;
+                    const cards = response.Ok.ListCards.map(parsePgpCardInfo);
                     resolve(cards);
                 } else {
                     reject(wrapError(response.Error));
@@ -37,12 +37,12 @@ export const listCards = async (): Promise<PgpCardInfo[]> => {
 
 export const signMessage = async (
     aid: string,
-    message: Array<number>,
-    pin: Array<number>,
+    message: Uint8Array,
+    pin: Uint8Array,
     touch_callback: () => void,
-): Promise<Array<number>> => {
+): Promise<Uint8Array> => {
     console.log(`Signing message...`);
-    const promise = new Promise<Array<number>>((resolve, reject) => {
+    const promise = new Promise<Uint8Array>((resolve, reject) => {
         const port = chrome.runtime.connectNative(BLOSS_NATIVE_NAME);
         port.onMessage.addListener((response) => {
             console.log(response);
@@ -50,7 +50,7 @@ export const signMessage = async (
                 if (response.Ok === "AwaitTouch") {
                     touch_callback();
                 } else {
-                    const sigBytes = (response.Ok as SignMessageData).SignMessage;
+                    const sigBytes = new Uint8Array(response.Ok.SignMessage);
                     resolve(sigBytes);
                     port.disconnect();
                 }
@@ -67,6 +67,11 @@ export const signMessage = async (
     return promise;
 };
 
+const parsePgpCardInfo = (data: any): PgpCardInfo => {
+    data.pubkeyBytes = new Uint8Array(data.pubkeyBytes);
+    return data;
+}
+
 const wrapError = (e: any): BlossError => {
     if (typeof e === "string") {
         return {
@@ -80,12 +85,4 @@ const wrapError = (e: any): BlossError => {
             details: e[etype],
         };
     }
-}
-
-interface ListCardsData {
-    ListCards: PgpCardInfo[],
-}
-
-interface SignMessageData {
-    SignMessage: Array<number>,
 }

@@ -25,7 +25,7 @@ npm i bloss-js
 
   List the OpenPGP smart cards currently connected to the local machine.
 
-* `signMessage(aid: string, message: Array<number>, pin: Array<number>, touch_callback: () => void): Promise<Array<number>`
+* `signMessage(aid: string, message: Uint8Array, pin: Uint8Array, touch_callback: () => void): Promise<Uint8Array>`
 
   Use the smart card with the specified OpenPGP application identifier (AID)
   to sign a message. The card's PGP signing key (and the key's pre-configured
