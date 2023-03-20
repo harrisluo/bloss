@@ -2,8 +2,7 @@ import { useState } from "react";
 import { useLocation } from "react-router-dom";
 import bs58 from 'bs58';
 import { CardItem } from "../components/CardItem";
-import { signMessage } from "../util/pcscHost";
-import { BlossError, PgpCardInfo } from "../util/schema";
+import { signMessage, BlossError } from "bloss-js";
 import { FingerPrintIcon } from "@heroicons/react/20/solid";
 
 export const CardSign = () => {

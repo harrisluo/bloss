@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { KeyIcon } from "@heroicons/react/20/solid";
-import { PgpCardInfo } from '../util/schema';
+import { PgpCardInfo } from 'bloss-js';
 import bs58 from 'bs58';
 
 export const CardItem = ({ cardInfo, linkOn }: { cardInfo: PgpCardInfo, linkOn: boolean }) => {

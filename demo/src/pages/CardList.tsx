@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react"
 import { CardItem } from "../components/CardItem";
-import { listCards } from "../util/pcscHost";
-import { PgpCardInfo } from "../util/schema";
+import { listCards, PgpCardInfo } from "bloss-js";
 
 export const CardList = () => {
     const [cards, setCards] = useState<PgpCardInfo[]>([]);
