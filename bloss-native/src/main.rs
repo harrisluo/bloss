@@ -5,7 +5,7 @@ use {
         SmartcardError as SmartcardError,
     },
     openpgp_card_pcsc::PcscBackend,
-    pcsc_host::card::{CardErrorWrapper, OpenpgpCard, OpenpgpCardInfo},
+    bloss_native::card::{CardErrorWrapper, OpenpgpCard, OpenpgpCardInfo},
     serde::{Serialize, Deserialize},
     std::{
         error::Error,
