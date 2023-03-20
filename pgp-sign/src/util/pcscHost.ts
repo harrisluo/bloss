@@ -1,5 +1,4 @@
-import bs58 from "bs58";
-import { ListCardsData, PgpCardInfo, SignMessageData } from "./schema";
+import { BlossError, ListCardsData, PgpCardInfo, SignMessageData } from "./schema";
 
 const PCSC_HOST_NAME = "com.harrisluo.bloss";
 
@@ -15,7 +14,7 @@ export const listCards = async (): Promise<PgpCardInfo[]> => {
                     const cards = (response.Ok as ListCardsData).ListCards;
                     resolve(cards);
                 } else {
-                    reject(response.Error);
+                    reject(wrapError(response.Error));
                 }
             }
         );
@@ -23,7 +22,7 @@ export const listCards = async (): Promise<PgpCardInfo[]> => {
     return promise;
 }
 
-export const signMessage = async(
+export const signMessage = async (
     aid: string,
     message: Array<number>,
     pin: Array<number>,
@@ -31,7 +30,7 @@ export const signMessage = async(
 ): Promise<Array<number>> => {
     console.log(`Signing message...`);
     const promise = new Promise<Array<number>>((resolve, reject) => {
-        const port = chrome.runtime.connectNative("com.harrisluo.bloss");
+        const port = chrome.runtime.connectNative(PCSC_HOST_NAME);
         port.onMessage.addListener((response) => {
             console.log(response);
             if (response.Ok) {
@@ -43,7 +42,8 @@ export const signMessage = async(
                     port.disconnect();
                 }
             } else {
-                reject(response.Error);
+                reject(wrapError(response.Error));
+                port.disconnect();
             }
         });
         port.onDisconnect.addListener(function () {
@@ -53,3 +53,18 @@ export const signMessage = async(
     })
     return promise;
 };
+
+const wrapError = (e: any): BlossError => {
+    if (typeof e === "string") {
+        return {
+            type: e,
+            details: null,
+        };
+    } else {
+        const etype = Object.keys(e)[0];
+        return {
+            type: etype,
+            details: e[etype],
+        };
+    }
+}

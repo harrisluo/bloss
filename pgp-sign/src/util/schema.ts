@@ -15,3 +15,8 @@ export interface ListCardsData {
 export interface SignMessageData {
     SignMessage: Array<number>,
 }
+
+export interface BlossError {
+    type: string,
+    details: any,
+}
