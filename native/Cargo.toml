@@ -5,9 +5,10 @@ version = "0.1.0"
 license = "MIT"
 authors = ["Harris Luo"]
 edition = "2021"
+readme = "README.md"
 repository = "https://github.com/harrisluo/bloss"
 keywords = ["openpgp", "chrome", "native", "signature", "signing"]
-exclude = ["target", "testin"]
+exclude = ["target", "testin", "install.sh"]
 
 [dependencies]
 byteorder = "1.4.3"
