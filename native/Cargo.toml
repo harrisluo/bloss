@@ -1,14 +1,14 @@
 [package]
 name = "bloss-native"
 description = "Native messaging host for OpenPGP smart card signing"
-version = "0.1.0"
+version = "0.1.1"
 license = "MIT"
 authors = ["Harris Luo"]
 edition = "2021"
 readme = "README.md"
 repository = "https://github.com/harrisluo/bloss"
 keywords = ["openpgp", "chrome", "native", "signature", "signing"]
-exclude = ["target", "testin", "install.sh"]
+exclude = ["target", "testin"]
 
 [dependencies]
 byteorder = "1.4.3"
