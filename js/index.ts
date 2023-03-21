@@ -1,12 +1,10 @@
 const BLOSS_NATIVE_NAME = "com.harrisluo.bloss_native";
 
-export type SigningAlgorithm = "ed25519";
-
 export interface PgpCardInfo {
     manufacturer: string,
     serialNumber: string,
     aid: string,
-    signingAlgo: SigningAlgorithm,
+    signingAlgo: string,
     pubkeyBytes: Uint8Array,
 }
 
