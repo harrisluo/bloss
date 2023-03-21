@@ -1,6 +1,6 @@
 {
   "name": "bloss-js",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "Web library for OpenPGP smart card signing",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -8,6 +8,7 @@
     "test": ""
   },
   "author": "Harris Luo",
+  "readme": "README.md",
   "license": "ISC",
   "repository": {
     "type": "git",

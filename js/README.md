@@ -5,9 +5,10 @@ produce digital signatures for arbitrary messages using locally connected
 OpenPGP smart cards.
 
 It uses the `chrome` native messaging API to communicate with `bloss-native`,
-the corresponding native messaging host (download and install here).
-`bloss-native` interacts with locally connected smart cards over CCID
-connections which are not directly accessible by browser code.
+the corresponding native messaging host (download and install
+[here](https://github.com/harrisluo/bloss/tree/main/native)). `bloss-native`
+interacts with locally connected smart cards over CCID connections which are
+not directly accessible by browser code.
 
 `bloss-js` is a tiny library that Chrome extensions can use to interact with
 `bloss-native`. It abstracts away the Chrome message passing logic and exposes

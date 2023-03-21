@@ -46,4 +46,18 @@ the Chrome extension that will use the native messaging host.
 
 ## API
 
-TODO.
+Browser extensions communicate with `bloss-native` using the Chrome native
+messaging protocol ([details](https://developer.chrome.com/docs/extensions/mv3/nativeMessaging/)).
+Messages are JSON-encoded.
+
+### `{"command":"ListCards"}`
+
+Return the list of OpenPGP smart cards connected to the local machine.
+
+### `{"command":{"SignMessage":{"aid":"<AID>","message":[<message>],"pin":[<pin>]}}}`
+
+Sign a message with the signing key of the OpenPGP smart card specified by the
+application identifier `<AID>`. The message is a JSON-encoded list of integers
+in the range [0, 255] (the bytes of the message). For PIN-protected cards, the
+PIN must be provided as a list of integers in the range [0, 255] (the ASCII
+encoding of the PIN string).
