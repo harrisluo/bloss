@@ -60,7 +60,11 @@ export const signMessage = async (
         port.onDisconnect.addListener(function () {
             console.log('Disconnected');
         });
-        port.postMessage({command: {SignMessage: { aid, message, pin }}});
+        port.postMessage({command: {SignMessage: {
+            aid,
+            message: Array.from(message),
+            pin: Array.from(pin)
+        }}});
     })
     return promise;
 };

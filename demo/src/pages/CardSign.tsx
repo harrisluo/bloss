@@ -51,10 +51,10 @@ export const CardSign = () => {
                 onClick={() => {
                     signMessage(
                         cardInfo.aid,
-                        Array.from(new TextEncoder().encode(message)),
-                        Array.from(new TextEncoder().encode(pin)),
+                        new Uint8Array(new TextEncoder().encode(message)),
+                        new Uint8Array(new TextEncoder().encode(pin)),
                         () => setAwaitingTouch(true),
-                    ).then((sigBytes: Array<number>) => {
+                    ).then((sigBytes: Uint8Array) => {
                         setPin("");
                         setPinInvalid(false);
                         setAwaitingTouch(false);
