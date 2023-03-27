@@ -39,8 +39,13 @@ enum PcscHostResponse {
 #[derive(Serialize, Deserialize, Debug)]
 enum ResponseData {
     ListCards(Vec<OpenpgpCardInfo>),
-    SignMessage(Vec<u8>),
-    AwaitTouch,
+    SignMessage {
+        aid: String,
+        signature: Vec<u8>,
+    },
+    AwaitTouch {
+        aid: String,
+    },
 }
 
 impl PcscHostRequest {
@@ -64,7 +69,10 @@ impl PcscHostRequest {
                 match sign_message(aid, message, pin) {
                     Ok(signature) => {
                         eprintln!("Ok");
-                        PcscHostResponse::Ok(ResponseData::SignMessage(signature))
+                        PcscHostResponse::Ok(ResponseData::SignMessage {
+                            aid: aid.to_string(),
+                            signature
+                        })
                     },
                     Err(e) => {
                         eprintln!("Error: {e}");
@@ -76,9 +84,11 @@ impl PcscHostRequest {
     }
 }
 
-fn write_touch_notification() {
+fn write_touch_notification(aid: &String) {
     eprintln!("Awaiting touch confirmation...");
-    let response = PcscHostResponse::Ok(ResponseData::AwaitTouch);
+    let response = PcscHostResponse::Ok(ResponseData::AwaitTouch {
+        aid: aid.to_string(),
+    });
     write_response(&response).unwrap();
 }
 
@@ -102,7 +112,7 @@ fn sign_message(aid: &String, message: &Vec<u8>, pin: &Vec<u8>) -> Result<Vec<u8
     let signature = card.sign_message(
         &message.as_slice(),
         pin.as_slice(),
-        write_touch_notification
+        || write_touch_notification(aid),
     )?;
     Ok(signature)
 }

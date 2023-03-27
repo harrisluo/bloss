@@ -95,12 +95,13 @@ impl OpenpgpCard {
         })
     }
 
-    pub fn sign_message(
+    pub fn sign_message<T>(
         &self,
         message: &[u8],
         pin: &[u8],
-        touch_confirm_callback: fn()
-    ) -> Result<Vec<u8>, CardErrorWrapper> {
+        touch_confirm_callback: T,
+    ) -> Result<Vec<u8>, CardErrorWrapper>
+    where T: Fn() -> () {
         let mut pgp_mut = self.pgp.borrow_mut();
         let opt = &mut pgp_mut.transaction()?;
 
