@@ -33,7 +33,7 @@ enum PcscHostCommand {
 #[derive(Serialize, Deserialize, Debug)]
 enum PcscHostResponse {
     Ok(ResponseData),
-    Error(CardErrorWrapper),
+    Error(ErrorData),
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -48,6 +48,12 @@ enum ResponseData {
     },
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+struct ErrorData {
+    aid: Option<String>,
+    details: CardErrorWrapper,
+}
+
 impl PcscHostRequest {
     fn handle(&self) -> PcscHostResponse {
         match &self.command {
@@ -60,7 +66,7 @@ impl PcscHostRequest {
                     },
                     Err(e) => {
                         eprintln!("Error: {e}");
-                        PcscHostResponse::Error(e)
+                        PcscHostResponse::Error( ErrorData { aid: None, details: e } )
                     },
                 }
             },
@@ -76,7 +82,7 @@ impl PcscHostRequest {
                     },
                     Err(e) => {
                         eprintln!("Error: {e}");
-                        PcscHostResponse::Error(e)
+                        PcscHostResponse::Error( ErrorData { aid: Some(aid.to_string()), details: e } )
                     },
                 }
             },
