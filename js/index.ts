@@ -9,6 +9,7 @@ export interface PgpCardInfo {
 }
 
 export interface BlossError {
+    aid: string,
     type: string,
     details: any,
 }
@@ -37,7 +38,7 @@ export const signMessage = async (
     aid: string,
     message: Uint8Array,
     pin: Uint8Array,
-    touch_callback: () => void,
+    touch_callback: (aid: string) => void,
 ): Promise<Uint8Array> => {
     console.log(`Signing message...`);
     const promise = new Promise<Uint8Array>((resolve, reject) => {
@@ -45,10 +46,13 @@ export const signMessage = async (
         port.onMessage.addListener((response) => {
             console.log(response);
             if (response.Ok) {
-                if (response.Ok === "AwaitTouch") {
-                    touch_callback();
+                const respType = Object.keys(response.Ok)[0];
+                if (respType === "AwaitTouch") {
+                    const respData = response.Ok.AwaitTouch as AwaitTouchResponse;
+                    touch_callback(respData.aid);
                 } else {
-                    const sigBytes = new Uint8Array(response.Ok.SignMessage);
+                    const respData = response.Ok.SignMessage as SignMessageResponse;
+                    const sigBytes = new Uint8Array(respData.signature);
                     resolve(sigBytes);
                     port.disconnect();
                 }
@@ -60,7 +64,7 @@ export const signMessage = async (
         port.onDisconnect.addListener(function () {
             console.log('Disconnected');
         });
-        port.postMessage({command: {SignMessage: {
+        port.postMessage({command: { SignMessage: {
             aid,
             message: Array.from(message),
             pin: Array.from(pin)
@@ -69,22 +73,38 @@ export const signMessage = async (
     return promise;
 };
 
+interface AwaitTouchResponse {
+    aid: string,
+}
+
+interface SignMessageResponse {
+    aid: string,
+    signature: Array<number>,
+}
+
+interface ErrorResponse {
+    aid: string,
+    details: any,
+}
+
 const parsePgpCardInfo = (data: any): PgpCardInfo => {
     data.pubkeyBytes = new Uint8Array(data.pubkeyBytes);
     return data;
 }
 
-const wrapError = (e: any): BlossError => {
-    if (typeof e === "string") {
+const wrapError = (e: ErrorResponse): BlossError => {
+    if (typeof e.details === "string") {
         return {
-            type: e,
+            aid: e.aid,
+            type: e.details,
             details: null,
         };
     } else {
-        const etype = Object.keys(e)[0];
+        const etype = Object.keys(e.details)[0];
         return {
+            aid: e.aid,
             type: etype,
-            details: e[etype],
+            details: e.details[etype],
         };
     }
 }
