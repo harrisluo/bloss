@@ -34,6 +34,27 @@ export const listCards = async (): Promise<PgpCardInfo[]> => {
     return promise;
 }
 
+export const getPubkey = async (aid: string): Promise<Uint8Array> => {
+    console.log("Getting pubkey...");
+    const promise = new Promise<Uint8Array>((resolve, reject) => {
+        chrome.runtime.sendNativeMessage(
+            BLOSS_NATIVE_NAME,
+            {command: { GetPubkey: { aid: aid } }},
+            (response) => {
+                console.log(response);
+                if (response.Ok) {
+                    const respData = response.Ok.GetPubkey as GetPubkeyResponse;
+                    const pubkeyBytes = new Uint8Array(respData.pubkey);
+                    resolve(pubkeyBytes);
+                } else {
+                    reject(wrapError(response.Error));
+                }
+            }
+        );
+    })
+    return promise;
+} 
+
 export const signMessage = async (
     aid: string,
     message: Uint8Array,
@@ -72,6 +93,11 @@ export const signMessage = async (
     })
     return promise;
 };
+
+interface GetPubkeyResponse {
+    aid: string,
+    pubkey: Array<number>,
+}
 
 interface AwaitTouchResponse {
     aid: string,
