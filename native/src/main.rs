@@ -23,6 +23,9 @@ struct PcscHostRequest {
 #[derive(Serialize, Deserialize, Debug)]
 enum PcscHostCommand {
     ListCards,
+    GetPubkey {
+        aid: String,
+    },
     SignMessage {
         aid: String,
         message: Vec<u8>,
@@ -39,6 +42,10 @@ enum PcscHostResponse {
 #[derive(Serialize, Deserialize, Debug)]
 enum ResponseData {
     ListCards(Vec<OpenpgpCardInfo>),
+    GetPubkey {
+        aid: String,
+        pubkey: Vec<u8>,
+    },
     SignMessage {
         aid: String,
         signature: Vec<u8>,
@@ -67,6 +74,22 @@ impl PcscHostRequest {
                     Err(e) => {
                         eprintln!("Error: {e}");
                         PcscHostResponse::Error( ErrorData { aid: None, details: e } )
+                    },
+                }
+            },
+            PcscHostCommand::GetPubkey { aid } => {
+                eprint!("GET PUBKEY...");
+                match get_pubkey(aid) {
+                    Ok(pubkey) => {
+                        eprintln!("Ok");
+                        PcscHostResponse::Ok(ResponseData::GetPubkey {
+                            aid: aid.to_string(),
+                            pubkey
+                        })
+                    },
+                    Err(e) => {
+                        eprintln!("Error: {e}");
+                        PcscHostResponse::Error( ErrorData { aid: Some(aid.to_string()), details: e } )
                     },
                 }
             },
@@ -111,6 +134,12 @@ fn list_cards() -> Result<Vec<OpenpgpCardInfo>, CardErrorWrapper> {
         cards.push(card.get_info()?);
     }
     Ok(cards)
+}
+
+fn get_pubkey(aid: &String) -> Result<Vec<u8>, CardErrorWrapper> {
+    let card = OpenpgpCard::try_from(aid)?;
+    let pubkey = card.get_pubkey()?;
+    Ok(pubkey)
 }
 
 fn sign_message(aid: &String, message: &Vec<u8>, pin: &Vec<u8>) -> Result<Vec<u8>, CardErrorWrapper> {

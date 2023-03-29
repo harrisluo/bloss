@@ -95,6 +95,30 @@ impl OpenpgpCard {
         })
     }
 
+    pub fn get_pubkey(&self) -> Result<Vec<u8>, CardErrorWrapper> {
+        let mut pgp_mut = self.pgp.borrow_mut();
+        let opt = &mut pgp_mut.transaction()?;
+        let ard = opt.application_related_data()?;
+
+        let mut signing_key_exists = false;
+        if let Some(key_info) = ard.key_information()? {
+            match key_info.sig_status() {
+                KeyStatus::Generated | KeyStatus::Imported => signing_key_exists = true,
+                _ => (),
+            };
+        } else {
+            return Err(CardErrorWrapper::InternalError("could not get key information".to_string()));
+        }
+
+        let mut pubkey = Vec::<u8>::new();
+        if signing_key_exists {
+            let pk_material = opt.public_key(KeyType::Signing)?;
+            pubkey = get_pubkey_from_pk_material(pk_material)?;
+        }
+
+        Ok(pubkey)
+    }
+
     pub fn sign_message<T>(
         &self,
         message: &[u8],
