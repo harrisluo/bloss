@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
 import bs58 from 'bs58';
 import { CardItem } from "../components/CardItem";
-import { signMessage, BlossError } from "bloss-js";
+import { signMessage, BlossError, getPubkey } from "bloss-js";
 import { FingerPrintIcon } from "@heroicons/react/20/solid";
 
 export const CardSign = () => {
@@ -12,6 +12,17 @@ export const CardSign = () => {
     const [pin, setPin] = useState<string>("");
     const [pinInvalid, setPinInvalid] = useState<boolean>(false);
     const [awaitingTouch, setAwaitingTouch] = useState<boolean>(false);
+
+    useEffect(() => {
+        getPubkey(
+            cardInfo.aid,
+        ).then(pubkeyBytes => {
+            const pk = bs58.encode(pubkeyBytes);
+            console.log(pk);
+        }).catch((e: BlossError) => {
+            alert(JSON.stringify(e));
+        });
+    }, []);
 
     if (awaitingTouch) {
         return <div className="grid grid-rows-auto gap-y-3 p-4 text-stone-100">
